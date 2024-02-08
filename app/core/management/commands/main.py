@@ -12,7 +12,7 @@ import subprocess
 import paramiko
 from decouple import config
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
-from telegram.ext import Application, CommandHandler, ConversationHandler, filters, CallbackQueryHandler, ContextTypes, MessageHandler
+from telegram.ext import Application, CommandHandler, ConversationHandler, CallbackQueryHandler, ContextTypes, MessageHandler
 
 TOKEN = config('BOT_TOKEN')
 
@@ -48,13 +48,7 @@ def connect_server(server_name, server_ip, password):
 
 # Helper function to run Docker command
 def run_docker_command(server):
-    # try:
-    #     command = SERVER_COMMANDS.get(server, "docker ps --format '{{.Names}}'")
-    #     result = subprocess.run(command.split(), capture_output=True, text=True)
-    #     return result.stdout
-    # except Exception as e:
-    #     return str(e)
-    
+
     server_ip = ""
     password = ""
     
@@ -70,7 +64,7 @@ def run_docker_command(server):
     
     # Run the command
     output = connect_server(server, server_ip, password)
-    return output    
+    return output
 
 # Callback handler for inline keyboard buttons
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -117,7 +111,7 @@ def main() -> None:
             SELECT_SERVER: [],
             RUN_DOCKER_PS: [],
         },
-        fallbacks=[MessageHandler(filters.Regex("^(Results|results)$"), cancel)],
+        fallbacks=[CommandHandler("cancel", cancel)],
     )
 
     # Add the ConversationHandler to the Application
@@ -126,9 +120,6 @@ def main() -> None:
     # Add the callback handler for inline keyboard buttons
     application.add_handler(CallbackQueryHandler(button_click))
     
-    # add the handler that when the bot outputs the docker containers, the conversation ends
-    # application.add_handler(MessageHandler(filters.Text("Result of `docker ps` on rp server:\n"), cancel))
-
     # Run the bot until the user presses Ctrl-C
     application.run_polling(allowed_updates=Update.ALL_TYPES)
 
