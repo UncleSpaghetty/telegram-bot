@@ -23,19 +23,9 @@ def connect_server(server_name, server_ip, password):
 
 def run_docker_command(server):
 
-    server_ip = ""
-    password = ""
-    
-    # Match the selected server and set server_ip and password
-    if server == "rp":
-        server_ip = config('RP_SERVER_IP')
-        password = config('RP_SERVER_PASSWORD')
-    elif server == "carrisiland":
-        server_ip = config('CARRISILAND_SERVER_IP')
-        password = config('CARRISILAND_SERVER_PASSWORD')
-    else:
-        return "Invalid server. Please select rp or carrisiland."
-    
+    server_ip = config(server.upper() + '_SERVER_IP')
+    password = config(server.upper() + '_SERVER_PASSWORD')
+        
     # Run the command
     output = connect_server(server, server_ip, password)
     return output
@@ -45,9 +35,11 @@ def run_docker_command(server):
 #############################
 
 async def check_docker_in_server(update: Update, context) -> int:
+    
+    servers = config('SERVER_LIST').split(',')
+    
     inline_keyboard = [
-        [InlineKeyboardButton("rp", callback_data='server_rp')],
-        [InlineKeyboardButton("carrisiland", callback_data='server_carrisiland')]
+        [InlineKeyboardButton(server, callback_data=f'server_{server}') for server in servers]
     ]
     
     await update.message.reply_text(

@@ -4,14 +4,15 @@
 
 """
 This is a basic example of a Telegram bot that interacts with the user to run a Docker command.
-The bot asks the user which server to connect to (rp or carrisiland) and then runs `docker ps`.
+The bot asks the user which server to connect to and then runs `docker ps`.
 """
 
 from decouple import config
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ConversationHandler, CallbackQueryHandler
 
-from . import ssh_functions, functions
+from functions import start_docker, button_click
+from ssh_functions import connect_server, check_docker_in_server
 
 TOKEN = config('BOT_TOKEN')
 
