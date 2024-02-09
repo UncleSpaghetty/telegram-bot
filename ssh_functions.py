@@ -7,16 +7,21 @@ from telegram.ext import ConversationHandler
 def connect_server(server_name, server_ip, password):
     # Create an SSH client
     ssh = paramiko.SSHClient()
+    
     # Automatically add the server's host key
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    
     # Connect to the server
-    print(f"Connecting to the server {server_name}...")
+    # print(f"Connecting to the server {server_name}...")
     ssh.connect(server_ip, username='root', password=password)
-    print(f"Connected to the server {server_name} \n")
+    # print(f"Connected to the server {server_name} \n")
+    
     # Execute the command to check the status of docker
     stdin, stdout, stderr = ssh.exec_command("docker ps --format '{{.Names}}'")
+    
     # Read the output of the command
     output = stdout.read().decode('utf-8')
+    
     # Close the connection
     ssh.close()
     return output

@@ -20,7 +20,7 @@ async def start_docker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
 async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     query = update.callback_query
     data = query.data
-    print(data)
+
     # Extract the server name from the callback data
     if data.split('_')[0] == "server":
         item = data.split('_')[1]
