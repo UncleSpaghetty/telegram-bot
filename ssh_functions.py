@@ -4,7 +4,7 @@ from decouple import config
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ConversationHandler
 
-def connect_server(server_name, server_ip, password):
+def connect_server(server_name, server_ip, password, command):
     # Create an SSH client
     ssh = paramiko.SSHClient()
     
@@ -17,22 +17,23 @@ def connect_server(server_name, server_ip, password):
     # print(f"Connected to the server {server_name} \n")
     
     # Execute the command to check the status of docker
-    stdin, stdout, stderr = ssh.exec_command("docker ps --format '{{.Names}}'")
+    stdin, stdout, stderr = ssh.exec_command(command)
     
     # Read the output of the command
     output = stdout.read().decode('utf-8')
-    
+    # take the last 4096 characters of the output
+    output = output[-4000:]
     # Close the connection
     ssh.close()
     return output
 
-def run_docker_command(server):
+def run_docker_command(server, command="docker ps --format '{{.Names}}'"):
 
     server_ip = config(server.upper() + '_SERVER_IP')
     password = config(server.upper() + '_SERVER_PASSWORD')
         
     # Run the command
-    output = connect_server(server, server_ip, password)
+    output = connect_server(server, server_ip, password, command)
     return output
 
 #############################
