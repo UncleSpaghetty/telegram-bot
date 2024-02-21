@@ -4,10 +4,6 @@ Telegram bot project to load to a server and launch. It starts a bot chat that w
 ## Pre-requisites
 1. Create a .env file with the following variables:
 ```
-# Docker
-MYSQL_PASSWORD=somerandomstring
-SECRET_KEY=anotherrandomstring
-
 # Telegram
 BOT_TOKEN=your_bot_token
 USER_ID=your_user_id
