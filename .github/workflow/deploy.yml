@@ -1,0 +1,23 @@
+name: Deploy
+on: [push]
+jobs:
+
+# cd telegram-bot-dev
+# git checkout main
+# git pull
+# source .venv/bin/activate 
+# pip install --no-cache-dir -r requirements.txt > /dev/null
+# ./sync-bot.sh
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:          
+      - name: Connect SSH and Deploy
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SSH_HOST  }}
+          username: ${{ secrets.SSH_USER  }}
+          key: ${{ secrets.SSH_KEY }}
+          script: ${{ secrets.SCRIPTS }}
