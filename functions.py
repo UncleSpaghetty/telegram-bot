@@ -120,23 +120,55 @@ async def check_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     else:
         await update.message.reply_text("Server not selected. Please select a server first.")
         return ConversationHandler.END
-
-async def button(update: Update, context) -> int:
-    containers = context.user_data['containers'].split('\n')
+    
+    
+def container_list(containers: list) -> list:
     # remove empty strings from the list
     containers = list(filter(None, containers))
-    # split the list into chunks of 4
-    containers = [containers[i:i + 4] for i in range(0, len(containers), 4)]
+    
+    # Set maximum button width (adjust as needed)
+    max_button_width = 40
+    
+    # Calculate the maximum length of container names
+    max_name_length = max(len(container) for container in containers)
+
+    # Initialize variables
+    total_buttons = len(containers)
+    remaining_buttons = total_buttons
+    buttons_per_row = min(2, total_buttons)  # default value
+
+    # Iterate through possible button counts per row
+    while buttons_per_row > 0:
+        # Calculate the number of rows needed
+        rows_needed = (total_buttons + buttons_per_row - 1) // buttons_per_row
+
+        # Check if the total width fits within the maximum button width
+        total_width = buttons_per_row * max_name_length
+        if total_width <= max_button_width * buttons_per_row:
+            break  # found a valid arrangement
+        
+        buttons_per_row -= 1  # decrease buttons_per_row and try again
+
+    # Ensure buttons_per_row is at least 1 to avoid range() error
+    buttons_per_row = max(1, buttons_per_row)
+
+    # Split containers into rows based on the calculated buttons_per_row
+    container_rows = [containers[i:i + buttons_per_row] for i in range(0, total_buttons, buttons_per_row)]
+    
+    return container_rows
+    
+async def button(update: Update, context) -> int:
+    containers = context.user_data['containers'].split('\n')
+
+    container_rows = container_list(containers)
 
     match update.data:
         case "check_logs":
             keyboard = [
-                [InlineKeyboardButton(container, callback_data=container) for container in containers[0]],
-                [InlineKeyboardButton(container, callback_data=container) for container in containers[1]],
-                [InlineKeyboardButton(container, callback_data=container) for container in containers[2]],
-                [InlineKeyboardButton(container, callback_data=container) for container in containers[3]],
-                [InlineKeyboardButton("Back", callback_data="back")]
+                [InlineKeyboardButton(container, callback_data=container) for container in container_chunk]
+                for container_chunk in container_rows
             ]
+            keyboard.append([InlineKeyboardButton("Back", callback_data="back")])
         case "back":
             keyboard = [
                 [InlineKeyboardButton("Check logs", callback_data='check_logs')],
