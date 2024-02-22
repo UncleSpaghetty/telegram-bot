@@ -26,12 +26,17 @@ def connect_server(server_name, server_ip, password, command):
     return output
 
 def run_docker_command(server, command="docker ps --format '{{.Names}}'"):
-    server_ip = config(server.upper() + '_SERVER_IP')
-    password = config(server.upper() + '_SERVER_PASSWORD')
+    from functions import check_local_logs
 
-    # Run the command
-    output = connect_server(server, server_ip, password, command)
-    return output
+    if server != 'self':
+        server_ip = config(server.upper() + '_SERVER_IP')
+        password = config(server.upper() + '_SERVER_PASSWORD')
+
+        # Run the command
+        output = connect_server(server, server_ip, password, command)
+        return output
+    else:
+        return check_local_logs(command)        
 
 async def check_docker_in_server(update: Update, context) -> int:
     
