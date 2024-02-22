@@ -1,58 +1,70 @@
 import subprocess
-from decouple import config
-from telegram import Bot, Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ContextTypes, ConversationHandler
 
 from ssh_functions import run_docker_command
 
 async def start_docker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Run docker ps command in this system
-    output = subprocess.run(["docker", "ps", "--format", "'{{.Names}}'"], capture_output=True, text=True)
-
+    output = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True)
+    result = output.stdout[-4000:]
     # save the output in the context
     context.user_data['selected_server'] = 'self'
-    context.user_data['containers'] = output.stdout.split('\n')
+    context.user_data['containers'] = result
 
-    await update.message.reply_text(f"Result of `docker ps` on this server:\n{output.stdout}")
+    await update.message.reply_text(f"Result of `docker ps` on this server:\n{result}")
     if len(output.stdout) == 0:
         await update.message.reply_text("No containers are running.")
-    return ConversationHandler.END
+        return ConversationHandler.END
+    data = "docker"
+    return await button(update, data, context)
+
+def check_local_logs(command: str ) -> int:
+        # Run the command
+        command = command.split(' ')
+        output = subprocess.run(command, capture_output=True, text=True)
+        result = output.stdout[-4000:]
+        return result
+
 
 async def select_server_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    from main import SELECT_SERVER, CHECK_LOGS
-
     query = update.callback_query
     data = query.data
+
+    selected_server = context.user_data.get('selected_server')
 
     match data:
         case "check_logs":
             context.user_data['command'] = "check_logs"
-            return await button(query, context)
+            return await button(query, data, context)
 
         case "drop_containers":
             context.user_data['command'] = "drop_containers"
             return await query.message.reply_text("Command not implemented yet.")                
         
         case "back":
-            return await button(query, context)
+            return await button(query, data, context)
+        
+        # case local docker ps
+        case _ if selected_server == "self":
+            await query.message.reply_text(f"Running {data} logs on {selected_server}...")
+            result = run_docker_command(selected_server, f"docker logs {data}")
+            await query.message.reply_text(f"Result of `docker logs {data}` on {selected_server} server:\n{result}")
+            return ConversationHandler.END
         
         case _ if data.split('_')[0] == "server":
             context.user_data['command'] = "select_server"
             item = data.split('_')[1]
-            if item in config('SERVER_LIST').split(','):
-                await query.message.reply_text(f"Connecting to {item} server...")
+            await query.message.reply_text(f"Connecting to {item} server...")
 
-                # Run Docker command
-                result = run_docker_command(item)
-                # update query context with the result
-                context.user_data['selected_server'] = item
-                context.user_data['containers'] = result
+            # Run Docker command
+            result = run_docker_command(item)
+            # update query context with the result
+            context.user_data['selected_server'] = item
+            context.user_data['containers'] = result
 
-                await query.message.reply_text(f"Result of `docker ps` on {item} server:\n{result}")
-                return await button(query, context)
-            else:
-                await query.message.reply_text("Invalid input. Please select a valid server.")
-                return SELECT_SERVER
+            await query.message.reply_text(f"Result of `docker ps` on {item} server:\n{result}")
+            return await button(query, data, context)
 
         #case containers
         case  _:
@@ -64,7 +76,7 @@ async def select_server_button(update: Update, context: ContextTypes.DEFAULT_TYP
                     return await check_logs(update, context)
             else:
                 await query.message.reply_text("Invalid input. Please select a valid server.")
-                return SELECT_SERVER
+                return ConversationHandler.END
 
 
 async def check_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -157,12 +169,12 @@ def container_list(containers: list) -> list:
     
     return container_rows
     
-async def button(update: Update, context) -> int:
+async def button(update: Update, data: str, context) -> int:
     containers = context.user_data['containers'].split('\n')
 
     container_rows = container_list(containers)
-
-    match update.data:
+    
+    match data:
         case "check_logs":
             keyboard = [
                 [InlineKeyboardButton(container, callback_data=container) for container in container_chunk]
@@ -174,7 +186,7 @@ async def button(update: Update, context) -> int:
                 [InlineKeyboardButton("Check logs", callback_data='check_logs')],
                 [InlineKeyboardButton("Drop containers", callback_data='drop_containers')],
             ]
-        case _ if update.data.split('_')[0] == "server":
+        case _ if data.split('_')[0] == "server" or data == "docker":
             keyboard = [
                 [InlineKeyboardButton("Check logs", callback_data='check_logs')],
                 [InlineKeyboardButton("Drop containers", callback_data='drop_containers')],
