@@ -53,3 +53,9 @@ The bot needs to have the following commands:
 # Check the status of the docker containers on the local machine
 - /docker
 ```
+
+## Additional comments
+### CI/CD
+The pipeline will run deploy.sh and then sync-bot.sh after connecting to the server.
+- deploy.sh: Will enter the virtual enviroment and install the requirements.
+- sync-bot.sh: Will check if the process is already running and kill it. Then it will start the bot again in the background.

@@ -5,136 +5,212 @@ from telegram.ext import ContextTypes, ConversationHandler
 from ssh_functions import run_docker_command
 
 async def start_docker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Function called after the user sends the /docker command.
+    
+    The function will run the `docker ps` command and print the output in the chat.
+    
+    Args:
+    - update: The update object from the Telegram API. (telegram.Update)
+    - context: The context object from the Telegram API. (telegram.ext.Context)
+    
+    Returns:
+    - ConversationHandler.END: The conversation ends here after printing the output. (int)
+    """
     # Run docker ps command in this system
-    output = subprocess.run(["docker", "ps", "--format", "{{.Names}}"], capture_output=True, text=True)
-    result = output.stdout[-4000:]
+    output = subprocess.run("docker ps --format {{.Names}}", shell=True, capture_output=True, text=True)
+    result = output.stdout[-4000:] if len(output.stdout) > 0 else output.stderr[-4000:]
+    if len(result) == 0:
+        result = "No containers are running."
     # save the output in the context
     context.user_data['selected_server'] = 'self'
     context.user_data['containers'] = result
 
-    await update.message.reply_text(f"Result of `docker ps` on this server:\n{result}")
+    # using <pre> and <code> tags to format the output as code block
+    await update.message.reply_text(f"<pre><code class='language-bash'>{result}</code></pre>",
+                                    parse_mode="HTML")
     if len(output.stdout) == 0:
         await update.message.reply_text("No containers are running.")
         return ConversationHandler.END
     data = "docker"
     return await button(update, data, context)
 
-def check_local_logs(command: str ) -> int:
-        # Run the command
-        command = command.split(' ')
-        output = subprocess.run(command, capture_output=True, text=True)
-        result = output.stdout[-4000:]
-        return result
+def run_local_command(command: str ) -> str:
+    """
+    Called in `run_docker_command` function if the server is 'self'. Execute a command in the local machine.
+    
+    Args:
+    - command: The command to execute. (str)
+    
+    Returns:
+    - result: The output of the command executed in the local machine. (str)
+    """
+    # Run the command
+    output = subprocess.run(command, shell=True, capture_output=True, text=True)
+    result = output.stdout[-4000:] if len(output.stdout) > 0 else output.stderr[-4000:]
+    return result
 
 
 async def select_server_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """
+    Function called after the user selects a server from the inline keyboard.
+    
+    The function will check data from the inline keyboard.
+    Based on the data, the function will run:
+    - `docker ps` command in the selected server.
+    - `docker logs` command if the user selects a container after selecting "Check container logs".
+    - `docker errors` command if the user selects a container after selecting "Check container errors".
+    - `docker stop` command if the user selects a container after selecting "Stop container".
+    - `docker restart` command if the user selects a container after selecting "Restart docker-compose".
+    - `docker network list` command if the user selects "Networks".
+    - `docker network inspect` command if the user selects "Inspect network" after selecting a network.
+    
+    Args:
+    - update: The update object from the Telegram API. (telegram.Update)
+    - context: The context object from the Telegram API. (telegram.ext.Context)
+    
+    Returns:    
+    - ConversationHandler.END: The conversation ends here after printing the output. (int)
+    """
+
+    # Get the data of the button pressed
     query = update.callback_query
     data = query.data
-
+    
+    # Get the selected server from the context
     selected_server = context.user_data.get('selected_server')
 
     match data:
         case "check_logs":
-            context.user_data['command'] = "check_logs"
+            context.user_data['command'] = "logs"
+            return await button(query, data, context)
+        
+        case "check_errors":
+            context.user_data['command'] = "errors"
+            return await button(query, data, context)
+        
+        case "stop_containers":
+            context.user_data['command'] = "stop"
+            return await button(query, data, context)
+        
+        case "restart_docker_compose":
+            context.user_data['command'] = "restart"
             return await button(query, data, context)
 
-        case "drop_containers":
-            context.user_data['command'] = "drop_containers"
-            return await query.message.reply_text("Command not implemented yet.")                
-        
-        case "back":
+        case "network":
+            context.user_data['command'] = "network list"
+            loading_message = await query.message.reply_text(f"Running `network` on {selected_server} server...", parse_mode="markdown")
+            
+            # Get the list of networks to print in the chat
+            result = run_docker_command(selected_server, "docker network list --format '{{.Name}} {{.Driver}} {{.Scope}}'")
+            
+            # Get the list of networks to use in the next step
+            network_list = run_docker_command(selected_server, "docker network list --format '{{.Name}}'")
+            context.user_data['networks_list'] = network_list
+            
+            await loading_message.edit_text(f"<pre><code class='language-bash'>{result}</code></pre>",
+                                            parse_mode="HTML")
+            await update.callback_query.answer()
             return await button(query, data, context)
         
-        # case local docker ps
-        case _ if selected_server == "self":
-            await query.message.reply_text(f"Running {data} logs on {selected_server}...")
-            result = run_docker_command(selected_server, f"docker logs {data}")
-            await query.message.reply_text(f"Result of `docker logs {data}` on {selected_server} server:\n{result}")
-            return ConversationHandler.END
+        case "network_inspect":
+            context.user_data['command'] = "network inspect"
+            return await button(query, data, context)
         
+        case "back":
+            context.user_data['command'] = "back"
+            return await button(query, data, context)
+                
+        # case a server is selected
         case _ if data.split('_')[0] == "server":
             context.user_data['command'] = "select_server"
             item = data.split('_')[1]
-            await query.message.reply_text(f"Connecting to {item} server...")
+            await query.message.reply_text(f"Connecting to {item} server...", parse_mode="markdown")
 
-            # Run Docker command
+            # Run Docker command (docker ps) in the selected server (item)
             result = run_docker_command(item)
             # update query context with the result
             context.user_data['selected_server'] = item
             context.user_data['containers'] = result
 
-            await query.message.reply_text(f"Result of `docker ps` on {item} server:\n{result}")
+            await query.message.reply_text(f"<pre><code class='language-bash'>{result}</code></pre>",
+                                            parse_mode="HTML")
+            # await update.callback_query.answer() will remove the "loading" message after the output is successfully printed
+            await update.callback_query.answer()
             return await button(query, data, context)
 
-        #case containers
-        case  _:
-            if context.user_data.get('containers'):
-                containers = context.user_data.get('containers').split('\n')
-                containers = list(filter(None, containers))
-                if data in containers:
-                    context.user_data['command'] = "check_logs"
-                    return await check_logs(update, context)
-            else:
-                await query.message.reply_text("Invalid input. Please select a valid server.")
-                return ConversationHandler.END
-
-
-async def check_logs(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    from main import CHECK_LOGS
-    selected_server = context.user_data.get('selected_server')
-
-    if selected_server:
-        try:
-            if context.user_data.get('containers'):
-                ### Run this if to check empty results from docker ps -> ['']
-                ### else the restult is a string
-                containers = context.user_data.get('containers').remove("") if context.user_data.get('containers') == [''] else context.user_data.get('containers')
-                if containers:
-                    containers = context.user_data.get('containers').split('\n')
-                else:
-                    containers = []
-            else:
-                containers = []
-
-            query = update.callback_query
-            data = query.data if query else None
-
-            # user_container = update.message.text if update.message else None
-            # user_container = user_container.lower() if user_container else None
-            user_container = update.callback_query.data if update.callback_query else None
+        #case a container is selected after selecting an action
+        case _:
+            # await update.callback_query.answer will propt a confirmation notification to the user
+            # if the user pressed Ok to the notification the command will be executed
+            # but calling await query.answer() will always return True
+            # so wait for the user to press Ok to the notification
+            command = context.user_data['command']
             
-            if context.user_data.get('command') == "check_logs":
-                command = True
-            else:
-                command = False
-
-            if not command and user_container:
-                await update.message.reply_text("Please select an action.")
-                return ConversationHandler.END
-
-            if command and not user_container:
-                await query.message.reply_text("Please enter the log file name:")
-                return CHECK_LOGS
-
-            if command and user_container and len(containers) == 0:
-                await update.message.reply_text("Can't check logs on no containers running. Select another server.")
-                return ConversationHandler.END
-
-            if command and user_container and user_container in containers:
-                await query.message.reply_text(f"Running {user_container} logs on {selected_server}...")
-                result = run_docker_command(selected_server, f"docker logs {user_container}")
-                await query.message.reply_text(f"Result of `docker logs {user_container}` on {selected_server} server:\n{result}")
-
+            if command == "stop" or command == "restart":
+                if 'answer' not in context.user_data or context.user_data['answer'] != command:
+                    await update.callback_query.answer('If you are sure you want to run this command, press Ok and select the container again.', show_alert=True)
+                    context.user_data['answer'] = command
+                    return ConversationHandler.END
+            
+            loading_message = await query.message.reply_text(f"Running `{command}` {data} on {selected_server} server...")
+            
+            # Run the selected command in the selected server
+            # case restart docker-compose is selected, the command is different because it needs to get the container id,
+            # the project working directory and then restart the docker-compose in the project working directory
+            # case errors is selected, the command is different because it needs to run the docker logs command and then
+            # grep the output for the word "error"
+            match command:
+                case "restart":
+                    result = restart_docker_compose(selected_server, data)
+                case "errors":
+                    result = run_docker_command(selected_server, f"docker logs {data} 2>&1 | grep -i error")
+                    if len(result) == 0:
+                        result = "No errors found."
+                case _:
+                    result = run_docker_command(selected_server, f"docker {command} {data}")
+            await loading_message.edit_text(f"<pre><code class='language-bash'>{result}</code></pre>",
+                                            parse_mode="HTML")
+            # await update.callback_query.answer() will remove the "loading" message after the output is successfully printed
+            await update.callback_query.answer()
             return ConversationHandler.END
-        except Exception as e:
-            await query.message.reply_text(f"Error: {e}")
-            return ConversationHandler.END
-    else:
-        await update.message.reply_text("Server not selected. Please select a server first.")
-        return ConversationHandler.END
+        
+def restart_docker_compose(selected_server: str, data: str) -> int:
+    """
+    Restart docker-compose in the project working directory of the selected container.
     
+    Args:
+    - selected_server: The server to connect to. (str)
+    - data: The container name. (str)
+    
+    Returns:
+    - result: The output of the command executed in the server. (str)
+    """
+    get_container_id = run_docker_command(selected_server, f'docker ps -aqf name={data}')
+
+    container_id = get_container_id.split('\n')[0]
+    # format is literally -F\"
+    format_option = '"'
+    # get the project working directory of the container
+    output = run_docker_command(selected_server, 
+        f"docker inspect {container_id} | grep project.working_dir | awk -F\{format_option} '{{print $4}}'"
+        )
+
+    output = output.split('\n')[0]
+    # restart docker-compose in the project working directory
+    result = run_docker_command(selected_server, f"cd {output} && docker-compose restart")
+    return result
     
 def container_list(containers: list) -> list:
+    """
+    Split the list of containers into rows based on the maximum button width.
+    
+    Args:
+    - containers: The list of containers. (list)
+    
+    Returns:
+    - container_rows: The list of containers split into rows. (list)
+    """
     # remove empty strings from the list
     containers = list(filter(None, containers))
     
@@ -170,34 +246,101 @@ def container_list(containers: list) -> list:
     return container_rows
     
 async def button(update: Update, data: str, context) -> int:
-    containers = context.user_data['containers'].split('\n')
-
-    container_rows = container_list(containers)
+    """
+    Create and print the inline keyboard buttons based on the data received (server name, container name, or action)
     
+    Main function to print the inline keyboard with the list of containers or networks.
+    
+    Args:
+    - update: The update object from the Telegram API. (telegram.Update)
+    - data: The data received from the inline keyboard. (str)
+    - context: The context object from the Telegram API. (telegram.ext.Context)
+    
+    Returns:
+    - ConversationHandler.END: The conversation ends here after printing the inline keyboard. (int)
+    """
+    
+    # Get the list of containers from the context
+    containers = context.user_data['containers'].split('\n')
+    
+    # Split the list of containers into rows
+    container_rows = container_list(containers)
+
     match data:
-        case "check_logs":
+        # case the user selects "Check container logs", "Check container errors", "Stop container", or "Restart docker-compose"
+        # the inline keyboard will have the list of containers with the back button
+        case "check_logs" | "check_errors" | "stop_containers" | "restart_docker_compose":
             keyboard = [
                 [InlineKeyboardButton(container, callback_data=container) for container in container_chunk]
                 for container_chunk in container_rows
             ]
             keyboard.append([InlineKeyboardButton("Back", callback_data="back")])
+        # case the user selects "Networks" and sees the list of networks or any action that lists
+        # the containers, the inline keyboard will have the list of actions
         case "back":
             keyboard = [
-                [InlineKeyboardButton("Check logs", callback_data='check_logs')],
-                [InlineKeyboardButton("Drop containers", callback_data='drop_containers')],
+                [InlineKeyboardButton("Check logs", callback_data='check_logs'),
+                 InlineKeyboardButton("Stop container", callback_data='stop_containers'),
+                 InlineKeyboardButton("Check errors", callback_data='check_errors')],
+                [InlineKeyboardButton("Restart docker-compose", callback_data='restart_docker_compose')],
+                [InlineKeyboardButton("Networks", callback_data='network')],
             ]
+        # case the user selects a server or runs the /docker command, the inline keyboard will have the list of actions
+        # to run in the server
         case _ if data.split('_')[0] == "server" or data == "docker":
             keyboard = [
-                [InlineKeyboardButton("Check logs", callback_data='check_logs')],
-                [InlineKeyboardButton("Drop containers", callback_data='drop_containers')],
+                [InlineKeyboardButton("Check logs", callback_data='check_logs'),
+                 InlineKeyboardButton("Stop container", callback_data='stop_containers'),
+                 InlineKeyboardButton("Check errors", callback_data='check_errors')],
+                [InlineKeyboardButton("Restart docker-compose", callback_data='restart_docker_compose')],
+                [InlineKeyboardButton("Networks", callback_data='network')],
             ]
             reply_markup=InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                text="Please select a container:",
+                text="Please select an action:",
                 reply_markup=reply_markup,
             )
-                
             return ConversationHandler.END
+        
+        # case the user selects "Networks", the chat will show the list of networks
+        # and inline keyboard will have the list of actions to run in the network with the back button
+        case "network":
+            keyboard = [
+                [InlineKeyboardButton("List networks", callback_data='network')],
+                [InlineKeyboardButton("Inspect network", callback_data='network_inspect')],
+                [InlineKeyboardButton("Back", callback_data="back")]
+            ]
+            reply_markup=InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                text="Please select an action:",
+                reply_markup=reply_markup,
+            )
+            return ConversationHandler.END
+
+        # case the user selects "Inspect network", the chat will show the list of networks
+        # and inline keyboard will have the list of networks with the back button
+        case "network_inspect":
+            # Get the list of networks from the context
+            networks_list = context.user_data['networks_list'].split('\n')
+            # Split the list of networks into rows
+            network_rows = container_list(networks_list)
+                        
+            keyboard = [
+                [InlineKeyboardButton(network, callback_data=network) for network in network_chunk]
+                for network_chunk in network_rows
+            ]
+            keyboard.append(   
+                [InlineKeyboardButton("Back", callback_data="network")]
+            )
+            reply_markup=InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(
+                text="Please select a network:",
+                reply_markup=reply_markup,
+            )
+            await update.answer()
+            return ConversationHandler.END
+        
+        # case the data is invalid
         case _:
             keyboard = []
 
@@ -207,5 +350,8 @@ async def button(update: Update, data: str, context) -> int:
         text="Please select a container:",
         reply_markup=reply_markup,
     )
-        
+    
+    # await update.answer() will remove the "loading" message after the inline keyboard is printed
+    # and after the user selects an action
+    await update.answer()
     return ConversationHandler.END

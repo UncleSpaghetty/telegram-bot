@@ -20,6 +20,18 @@ TOKEN = config('BOT_TOKEN')
 SELECT_SERVER, RUN_DOCKER_PS, CHECK_LOGS = range(3)
 
 def main() -> None:
+    """
+    Create the bot and start the conversation handler.
+    
+    The conversation handler is a state machine that will keep track of the user's input and
+    guide the conversation to the next step.
+    Entry points are the commands that the bot will listen to.
+    
+    `select_server_button` has been added as a callback handler for inline keyboard buttons.
+    Each handler has a priority, which is used to determine the order in which the handlers are called.
+    1. First the conversation handler is called, to set the enviroment of the bot (server or where the script is running).
+    2. Then the callback handler is called to process the inline keyboard buttons.
+    """
     # Create the Application and pass it your bot's token.
     application = Application.builder().token(TOKEN).build()
 
